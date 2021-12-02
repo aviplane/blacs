@@ -223,6 +223,14 @@ class BLACS(object):
         self.ui.main_splitter.setStretchFactor(0,0)
         self.ui.main_splitter.setStretchFactor(1,1)
 
+        ## Setup server hosts
+        self.datadisplay_host = self.exp_config.get('servers', 'feedback_server')
+        self.dataanalysis_host = self.datadisplay_host
+
+        ## Setup server ports
+        self.datadisplay_port = self.exp_config.get('ports', 'display')
+        self.dataanalysis_port = self.exp_config.get('ports', 'feedback')
+
         self.tablist = {}
         self.panes = {}
         self.settings_dict = {}
@@ -433,7 +441,7 @@ class BLACS(object):
         logger.info('hiding easter eggs')
         import random
         if self.tablist:
-            random_tab = random.choice(list(self.tablist.values())) 
+            random_tab = random.choice(list(self.tablist.values()))
             self.easter_egg_button = EasterEggButton()
             # Add the button before the other buttons in the tab's header:
             header = random_tab._ui.horizontalLayout
@@ -658,7 +666,7 @@ class BLACS(object):
             logger.info('quitting')
             return
         QTimer.singleShot(100, lambda: self.finalise_quit(deadline, pending_threads))
-            
+
 
     def on_save_front_panel(self,*args,**kwargs):
         data = self.front_panel_settings.get_save_data()
