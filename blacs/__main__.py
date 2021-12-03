@@ -49,7 +49,7 @@ import zmq
 import zprocess
 from zprocess import raise_exception_in_thread
 import zprocess.locking
-
+import traceback
 
 splash.update_text('importing h5_lock and h5py')
 import labscript_utils.h5_lock, h5py
@@ -61,6 +61,7 @@ from labscript_utils.ls_zprocess import ProcessTree, ZMQServer
 from labscript_utils.setup_logging import setup_logging
 import labscript_utils.shared_drive
 import blacs
+import blacs.remote
 
 
 process_tree = ProcessTree.instance()
@@ -706,6 +707,62 @@ class ExperimentServer(ZMQServer):
         logger.info('local filepath: %s'%h5_filepath)
         return app.queue.process_request(h5_filepath)
 
+### Should this be combined with the ExperimentServer
+class RemoteServer(ZMQServer):
+    def __init__(self):
+        port = app.exp_config.getint(
+            'ports', 'remote_blacs', fallback=blacs.remote.DEFAULT_PORT
+        )
+        ZMQServer.__init__(self, port=port)
+
+    @inmain_decorator()
+    def handle_get_n_shots(self):
+        return app.queue._model.rowCount()
+
+    @inmain_decorator()
+    def handle_start_queue(self):
+        app.queue.manager_paused = False
+
+    @inmain_decorator()
+    def handle_pause_queue(self):
+        app.queue.manager_paused = True
+
+    @inmain_decorator()
+    def handle_queue_state(self):
+        return app.queue.manager_paused
+
+    @inmain_decorator()
+    def handle_device_states(self):
+        tablist = app.tablist
+        names, tabs = zip(*tablist.items())
+        states = [tab._state for tab in tabs]
+        return states
+
+    @inmain_decorator()
+    def handle_restart_errored_devices(self, pineblaster = False):
+        tablist = app.tablist
+        names, tabs = zip(*tablist.items())
+        states = [tab._state for tab in tabs]
+        restarted_names = []
+        for i in range(len(names)):
+            if 'error' in states[i]:
+                tabs[i].restart()
+                restarted_names.append(names[i])
+            if pineblaster and 'pineblaster' in names[i]:
+                tabs[i].restart()
+                restarted_names.append(names[i])
+        return "Restarted " + ', '.join(restarted_names)
+
+    def handler(self, request_data):
+        cmd, args, kwargs = request_data
+        if cmd == 'hello':
+            return 'hello'
+        try:
+            return getattr(self, 'handle_' + cmd)(*args, **kwargs)
+        except Exception as e:
+            msg = traceback.format_exc()
+            msg = "blacs server returned an exception:\n" + msg
+            return e.__class__(msg)
 
 if __name__ == '__main__':
     if 'tracelog' in sys.argv:
@@ -769,6 +826,9 @@ if __name__ == '__main__':
     qapplication.setAttribute(Qt.AA_DontShowIconsInMenus, False)
     logger.info('QApplication instantiated')
     app = BLACS(qapplication)
+
+    splash.update_text('initialising Remote BLACS server')
+    remote = RemoteServer()
 
     logger.info('BLACS instantiated')
     splash.hide()
