@@ -743,9 +743,10 @@ class RemoteServer(ZMQServer):
         tablist = app.tablist
         names, tabs = zip(*tablist.items())
         states = [tab._state for tab in tabs]
+        errored = [tab._error for tab in tabs]
         restarted_names = []
         for i in range(len(names)):
-            if 'error' in states[i]:
+            if errored[i]:
                 tabs[i].restart()
                 restarted_names.append(names[i])
             if pineblaster and 'pineblaster' in names[i]:
