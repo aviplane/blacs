@@ -417,6 +417,7 @@ class DeviceTab(Tab):
                 else:                    
                     # TODO: Only do this if the front panel values match what we asked to program (eg, the user hasn't changed the value since)
                     if output.value == self._last_programmed_values[channel]:
+                        print("BLACS error, ", remote_value)
                         output.set_value(remote_value,program=False)
             
                         # Update the last_programmed_values            

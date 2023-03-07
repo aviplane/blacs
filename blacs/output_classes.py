@@ -359,6 +359,7 @@ class AO(object):
         return self._current_value
         
     def set_value(self, value, unit=None, program=True):
+        print(value)
         # conversion to float means a string can be passed in too:
         value = float(value)
         

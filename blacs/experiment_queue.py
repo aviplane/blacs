@@ -10,9 +10,12 @@
 # the project for the full license.                                 #
 #                                                                   #
 #####################################################################
+from __future__ import division, unicode_literals, print_function, absolute_import
 import queue
+
 import logging
 import os
+import platform
 import threading
 import time
 import sys
@@ -246,6 +249,8 @@ class QueueManager(object):
     @manager_repeat_mode.setter
     @inmain_decorator(True)
     def manager_repeat_mode(self, value):
+        # print(value, self.REPEAT_LAST, self.REPEAT_ALL)
+        # value = 0
         assert value in [self.REPEAT_LAST, self.REPEAT_ALL]
         self._manager_repeat_mode = value
         button = self._ui.queue_repeat_button
@@ -434,27 +439,18 @@ class QueueManager(object):
 
     def clean_h5_file(self, h5file, new_h5_file, repeat_number=0):
         try:
-            with h5py.File(h5file, 'r') as old_file:
-                with h5py.File(new_h5_file, 'w') as new_file:
-                    groups_to_copy = [
-                        'devices',
-                        'calibrations',
-                        'script',
-                        'globals',
-                        'connection table',
-                        'labscriptlib',
-                        'waits',
-                        'time_markers',
-                        'shot_properties',
-                    ]
+            with h5py.File(h5file,'r') as old_file:
+                with h5py.File(new_h5_file,'w') as new_file:
+                    groups_to_copy = ['devices', 'calibrations', 'script', 'globals', 'connection table',
+                                      'labscriptlib', 'waits', 'time_markers']
                     for group in groups_to_copy:
                         if group in old_file:
                             new_file.copy(old_file[group], group)
                     for name in old_file.attrs:
                         new_file.attrs[name] = old_file.attrs[name]
                     new_file.attrs['run repeat'] = repeat_number
-        except Exception:
-            # raise
+        except Exception as e:
+            #raise
             self._logger.exception('Clean H5 File Error.')
             return False
 
@@ -498,14 +494,20 @@ class QueueManager(object):
     def get_device_error_state(self,name,device_list):
         return device_list[name].error_message
 
-    def send_server_message(self, port, host, data, timeout = 10):
+    def send_server_message(self, port, host, data, timeout = 15):
         logger = logging.getLogger('BLACS.queue_manager.thread')
-        response = zprocess.zmq_get_raw(port, host, data=data.encode('utf-8'))
+        try:
+            response = zprocess.zmq_get_raw(port, host, data=data.encode('utf-8'))
+        except zprocess.utils.TimeoutError:
+            response="uh oh".encode('utf-8')
         error_condition = False
         if response.decode('utf-8') != 'ok':
             logger.exception('invalid response from server: ' + str(response))
             error_condition = True
-        response = zprocess.zmq_get_raw(port, host, timeout = timeout)
+        try:
+            response = zprocess.zmq_get_raw(port, host, data=data.encode('utf-8'), timeout=timeout)
+        except zprocess.utils.TimeoutError:
+            response="uh oh part 2".encode('utf-8')
         if response.decode('utf-8') != 'done':
             logger.exception('invalid response from server: ' + str(response))
             error_condition = True
@@ -547,7 +549,7 @@ class QueueManager(object):
                 path = self.get_next_file()
                 self.set_status('Preparing shot...', path)
                 logger.info('Got a file: %s'%path)
-            except Exception:
+            except:
                 # If no files, sleep for 1s,
                 self.set_status("Idle")
                 time.sleep(1)
@@ -555,6 +557,7 @@ class QueueManager(object):
 
             devices_in_use = {}
             transition_list = {}
+            start_time = time.time()
             self.current_queue = queue.Queue()
 
             # Function to be run when abort button is clicked
@@ -584,28 +587,20 @@ class QueueManager(object):
                 abort = False
                 restarted = False
                 self.set_status("Transitioning to buffered...", path)
+                # Send h5 file over to Data Display Server
+                logger.info("Sending file {}".format(path))
+                # a = error_condition or self.send_server_message(
+                #                                            self.BLACS.dataanalysis_port,
+                #                                            self.BLACS.dataanalysis_host,
+                #                                            data = path)
+                # a = self.send_server_message(self.BLACS.datadisplay_port,
+                #                                  self.BLACS.datadisplay_host,
+                #                                  data = path)
 
-                abort = self.send_server_message(self.BLACS.datadisplay_port,
-                                                 self.BLACS.datadisplay_host,
-                                                 data = path)
-                abort = error_condition or self.send_server_message(
-                                                           self.BLACS.dataanalysis_port,
-                                                           self.BLACS.dataanalysis_host,
-                                                           data = path)
                 # Enable abort button, and link in current_queue:
                 inmain(self._ui.queue_abort_button.clicked.connect,abort_function)
                 inmain(self._ui.queue_abort_button.setEnabled,True)
 
-                ##########################################################################################################################################
-                #                                                        Plugin callbacks                                                                #
-                ##########################################################################################################################################
-                for callback in plugins.get_callbacks('pre_transition_to_buffered'):
-                    try:
-                        callback(path)
-                    except Exception:
-                        logger.exception("Plugin callback raised an exception")
-
-                start_time = time.time()
 
                 with h5py.File(path, 'r') as hdf5_file:
                     devices_in_use = {}
@@ -617,7 +612,7 @@ class QueueManager(object):
                         )
                         devices_in_use[name] = self.BLACS.tablist[name]
                         start_order[name] = device_properties.get('start_order', None)
-                        stop_order[name] = device_properties.get('stop_order', None)
+                        stop_order[name] = device_properties.get('start_order', None)
 
                 # Sort the devices into groups based on their start_order and stop_order
                 start_groups = defaultdict(set)
@@ -637,7 +632,7 @@ class QueueManager(object):
                                     logger.error('%s has an error condition, aborting run' % name)
                                     error_condition = True
                                     break
-                            except Exception:
+                            except Exception as e:
                                 logger.exception('Exception while transitioning %s to buffered mode.'%(name))
                                 error_condition = True
                                 break
@@ -812,8 +807,11 @@ class QueueManager(object):
                 # clean up the h5 file
                 self.manager_paused = True
                 # is this a repeat?
-                with h5py.File(path, 'r') as h5_file:
-                    repeat_number = h5_file.attrs.get('run repeat', 0)
+                try:
+                    with h5py.File(path, 'r') as h5_file:
+                        repeat_number = h5_file.attrs.get('run repeat', 0)
+                except Exception:
+                    repeat_numer = 0
                 # clean the h5 file:
                 temp_path = tempfilename()
                 self.clean_h5_file(path, temp_path, repeat_number=repeat_number)
@@ -884,7 +882,7 @@ class QueueManager(object):
                         try:
                             tab.transition_to_manual(self.current_queue)
                             transition_list[name] = tab
-                        except Exception:
+                        except Exception as e:
                             logger.exception('Exception while transitioning %s to manual mode.'%(name))
                             error_condition = True
                     # Wait for their responses:
@@ -916,7 +914,7 @@ class QueueManager(object):
                             error_condition = True
                             logger.debug('%s is in an error state' % name)
                         else:
-                            logger.debug('%s finished transitioning to manual mode' % name)
+                            logger.info('%s finished transitioning to manual mode' % name)
                         # Once device has transitioned_to_manual, disconnect restart
                         # signal:
                         tab = devices_in_use[name]
@@ -926,7 +924,7 @@ class QueueManager(object):
                 if error_condition:
                     self.set_status("Error in transtion to manual\nQueue Paused")
 
-            except Exception:
+            except Exception as e:
                 error_condition = True
                 logger.exception("Error in queue manager execution. Queue paused.")
                 self.set_status("Error in queue manager\nQueue paused")
@@ -934,19 +932,15 @@ class QueueManager(object):
                 # Raise the error in a thread for visibility
                 zprocess.raise_exception_in_thread(sys.exc_info())
 
-            a = self.send_server_message(self.BLACS.dataanalysis_port,
-                                                       self.BLACS.dataanalysis_host,
-                                                       data = 'done', timeout = 30)
-            b = self.send_server_message(self.BLACS.datadisplay_port,
-                                                       self.BLACS.datadisplay_host,
-                                                       data = 'done')
-            error_condition = error_condition and a and b
             if error_condition:
                 # clean up the h5 file
                 self.manager_paused = True
                 # is this a repeat?
-                with h5py.File(path, 'r') as h5_file:
-                    repeat_number = h5_file.attrs.get('run repeat', 0)
+                try:
+                    with h5py.File(path, 'r') as h5_file:
+                        repeat_number = h5_file.attrs.get('run repeat', 0)
+                except:
+                    repeat_number = 0
                 # clean the h5 file:
                 temp_path = tempfilename()
                 self.clean_h5_file(path, temp_path, repeat_number=repeat_number)
@@ -967,6 +961,13 @@ class QueueManager(object):
             ##########################################################################################################################################
             #                                                        Analysis Submission                                                             #
             ##########################################################################################################################################
+            # error_condition = self.send_server_message(self.BLACS.dataanalysis_port,
+            #                                            self.BLACS.dataanalysis_host,
+            #                                            data = 'done')
+            # error_condition = self.send_server_message(self.BLACS.datadisplay_port,
+            #                                            self.BLACS.datadisplay_host,
+            #                                            data = 'done')
+            # time.sleep(1.)                                           
             logger.info('All devices are back in static mode.')
 
             # check for analysis Filters in Plugins
@@ -1013,7 +1014,7 @@ class QueueManager(object):
                         message = self.process_request(path)
                     except Exception:
                         # TODO: make this error popup for the user
-                        self._logger.exception('Failed to copy h5_file (%s) for repeat run'%s)
+                        self.logger.exception('Failed to copy h5_file (%s) for repeat run'%s)
                     logger.info(message)
 
             self.set_status("Idle")
