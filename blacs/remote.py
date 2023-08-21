@@ -36,9 +36,12 @@ class Client(ZMQClient):
     def device_states(self):
         return self.request('device_states')
 
-    def restart_errored_devices(self, pineblaster = False):
-        return self.request('restart_errored_devices', pineblaster = pineblaster)
+    def restart_errored_devices(self, pineblaster = False, multidaq = False):
+        return self.request('restart_errored_devices', pineblaster = pineblaster, multidaq = multidaq)
 
     def start_queue(self):
         """If you need a docstring for this function idk what to tell you"""
         return self.request('start_queue')
+
+    def top_file(self):
+        return self.request('top_file')

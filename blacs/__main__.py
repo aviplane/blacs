@@ -737,21 +737,31 @@ class RemoteServer(ZMQServer):
         names, tabs = zip(*tablist.items())
         states = [tab._state for tab in tabs]
         return states
+    
+    @inmain_decorator()
+    def handle_top_file(self):
+        if app.queue._model.rowCount() == 0:
+            return ""
+        return app.queue._model.item(0).text()
 
     @inmain_decorator()
-    def handle_restart_errored_devices(self, pineblaster = False):
+    def handle_restart_errored_devices(self, pineblaster = False, multidaq = False):
         tablist = app.tablist
         names, tabs = zip(*tablist.items())
-        states = [tab._state for tab in tabs]
         errored = [tab._error for tab in tabs]
         restarted_names = []
         for i in range(len(names)):
             if errored[i]:
                 tabs[i].restart()
                 restarted_names.append(names[i])
-            if pineblaster and 'pineblaster' in names[i]:
+            if pineblaster and 'pulseblaster' in names[i]:
                 tabs[i].restart()
                 restarted_names.append(names[i])
+            if multidaq and 'MultiDAQ' in names[i]:
+                tabs[i].restart()
+                restarted_names.append(names[i])
+
+        ## pulseblaster.stop() and then pulseblaster.start()
         return "Restarted " + ', '.join(restarted_names)
 
     def handler(self, request_data):

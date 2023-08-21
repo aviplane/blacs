@@ -951,10 +951,14 @@ class QueueManager(object):
                            'another process may be using it. Using alternate '
                            'filename for second attempt.')
                     logger.warning(msg, exc_info=True)
-                    shutil.move(temp_path, path.replace('.h5','_retry.h5'))
+                    try:
+                        shutil.move(temp_path, path.replace('.h5','_retry.h5'))
+                        self.prepend(path)
+
+                    except FileNotFoundError:
+                        print("Couldn't find temp file, moving on")
                     path = path.replace('.h5','_retry.h5')
                 # Put it back at the start of the queue:
-                self.prepend(path)
 
                 continue
 
