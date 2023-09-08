@@ -41,7 +41,7 @@ import labscript_utils.properties
 
 from blacs.tab_base_classes import MODE_MANUAL, MODE_TRANSITION_TO_BUFFERED, MODE_TRANSITION_TO_MANUAL, MODE_BUFFERED
 import blacs.plugins as plugins
-
+from datetime import date
 
 def tempfilename(prefix='BLACS-temp-', suffix='.h5'):
     """Return a filepath appropriate for use as a temporary file"""
@@ -189,8 +189,10 @@ class QueueManager(object):
             file_list = list(data['files_queued'])
             self._model.clear()
             self._create_headers()
+            today = date.today()  ### Added a check to only include previous shots if they're from today.
             for file in file_list:
-                self.process_request(str(file))
+                if str(today) in str(file):
+                    self.process_request(str(file))
         if 'last_opened_shots_folder' in data:
             self.last_opened_shots_folder = data['last_opened_shots_folder']
 
