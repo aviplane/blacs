@@ -588,6 +588,12 @@ class QueueManager(object):
                 error_condition = False
                 abort = False
                 restarted = False
+                for callback in plugins.get_callbacks('pre_transition_to_buffered'):
+                    try:
+                        callback(path)
+                    except Exception:
+                        logger.exception("Plugin callback raised an exception")
+
                 self.set_status("Transitioning to buffered...", path)
                 # Send h5 file over to Data Display Server
                 logger.info("Sending file {}".format(path))
@@ -603,25 +609,29 @@ class QueueManager(object):
                 inmain(self._ui.queue_abort_button.clicked.connect,abort_function)
                 inmain(self._ui.queue_abort_button.setEnabled,True)
 
-
-                with h5py.File(path, 'r') as hdf5_file:
-                    devices_in_use = {}
-                    start_order = {}
-                    stop_order = {}
-                    for name in  hdf5_file['devices']:
-                        device_properties = labscript_utils.properties.get(
-                            hdf5_file, name, 'device_properties'
-                        )
-                        devices_in_use[name] = self.BLACS.tablist[name]
-                        start_order[name] = device_properties.get('start_order', None)
-                        stop_order[name] = device_properties.get('start_order', None)
-
-                # Sort the devices into groups based on their start_order and stop_order
                 start_groups = defaultdict(set)
                 stop_groups = defaultdict(set)
-                for name in devices_in_use:
-                    start_groups[start_order[name]].add(name)
-                    stop_groups[stop_order[name]].add(name)
+                
+                try:
+                    with h5py.File(path, 'r') as hdf5_file:
+                        devices_in_use = {}
+                        start_order = {}
+                        stop_order = {}
+                        for name in  hdf5_file['devices']:
+                            device_properties = labscript_utils.properties.get(
+                                hdf5_file, name, 'device_properties'
+                            )
+                            devices_in_use[name] = self.BLACS.tablist[name]
+                            start_order[name] = device_properties.get('start_order', None)
+                            stop_order[name] = device_properties.get('start_order', None)
+                    # Sort the devices into groups based on their start_order and stop_order
+                    for name in devices_in_use:
+                        start_groups[start_order[name]].add(name)
+                        stop_groups[stop_order[name]].add(name)
+                except FileNotFoundError: ### Added 2023-09-12 - AP
+                    abort = True
+                    print("File not found error added 2023-09-12")
+
 
                 while (transition_list or start_groups) and not error_condition:
                     if not transition_list:

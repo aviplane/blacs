@@ -296,6 +296,7 @@ class BLACS(object):
             try:
                 # instantiate the plugin
                 self.plugins[module_name] = module.Plugin(plugin_settings[module_name] if module_name in plugin_settings else {})
+                logger.info(f'instantiating plugin {module_name}')
             except Exception:
                 logger.exception('Could not instantiate plugin \'%s\'. Skipping' % module_name)
 

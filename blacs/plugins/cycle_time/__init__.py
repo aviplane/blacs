@@ -67,13 +67,13 @@ class Plugin(object):
         # settings for the upcoming shot:
         self.target_cycle_time = self.next_target_cycle_time
         self.delay_after_programming = self.next_delay_after_programming
-
         with h5py.File(h5_filepath, 'r') as f:
             try:
                 group = f['shot_properties']
             except KeyError:
                 # Nothing for us to do
                 return
+            
             self.next_target_cycle_time = get_attribute(group, 'target_cycle_time')
             self.next_delay_after_programming = get_attribute(
                 group, 'cycle_time_delay_after_programming'
